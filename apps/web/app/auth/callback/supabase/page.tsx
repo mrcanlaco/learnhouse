@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { supabase } from '@lib/supabaseClient'
-import { useAuth } from '@hooks/useAuth'
+import { useAuth } from '@components/Contexts/AuthContext'
 
 function SupabaseCallbackInner() {
   const router = useRouter()
