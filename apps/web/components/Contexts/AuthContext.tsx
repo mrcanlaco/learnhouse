@@ -813,6 +813,42 @@ export function SessionProvider({
     signOut: handleSignOut,
   }
 
+  // Effect để kiểm tra Silent SSO Supabase Cookie
+  useEffect(() => {
+    // Chỉ kiểm tra khi chưa đăng nhập và không phải trang đăng nhập/auth
+    if (status === 'unauthenticated' && !window.location.pathname.startsWith('/auth')) {
+      const checkSupabaseCookieAndSilentLogin = async () => {
+        // Tìm cookie của Supabase (thường có dạng sb-[id]-auth-token)
+        const hasSupabaseCookie = document.cookie.split(';').some(c => c.trim().startsWith('sb-') && c.includes('-auth-token'));
+        
+        if (hasSupabaseCookie) {
+          try {
+            const { supabase } = await import('@lib/supabaseClient');
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session?.access_token) {
+              // Gọi API exchange để silent login
+              const res = await fetch('/api/auth/exchange/supabase', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ supabase_token: session.access_token }),
+              });
+              
+              if (res.ok) {
+                // Đăng nhập thành công, làm mới Session
+                refreshSessionInternalRef.current().catch(console.error);
+              }
+            }
+          } catch (error) {
+            console.error('Silent SSO Login failed:', error);
+          }
+        }
+      };
+      
+      checkSupabaseCookieAndSilentLogin();
+    }
+  }, [status]);
+
   return (
     <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>
   )

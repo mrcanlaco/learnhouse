@@ -34,6 +34,8 @@ class GeneralConfig(BaseModel):
 
 class SecurityConfig(BaseModel):
     auth_jwt_secret_key: str
+    supabase_url: Optional[str] = None
+    supabase_key: Optional[str] = None
 
 
 class AIConfig(BaseModel):
@@ -194,6 +196,16 @@ def get_learnhouse_config() -> LearnHouseConfig:
     auth_jwt_secret_key = env_auth_jwt_secret_key or yaml_config.get(
         "security", {}
     ).get("auth_jwt_secret_key")
+
+    env_supabase_url = os.environ.get("LEARNHOUSE_SUPABASE_URL")
+    supabase_url = env_supabase_url or yaml_config.get(
+        "security", {}
+    ).get("supabase_url")
+
+    env_supabase_key = os.environ.get("LEARNHOUSE_SUPABASE_KEY")
+    supabase_key = env_supabase_key or yaml_config.get(
+        "security", {}
+    ).get("supabase_key")
 
     # SECURITY: Validate JWT secret key exists and has sufficient entropy
     if not auth_jwt_secret_key:
@@ -636,7 +648,11 @@ def get_learnhouse_config() -> LearnHouseConfig:
         ),
         hosting_config=hosting_config,
         database_config=database_config,
-        security_config=SecurityConfig(auth_jwt_secret_key=auth_jwt_secret_key),
+        security_config=SecurityConfig(
+            auth_jwt_secret_key=auth_jwt_secret_key,
+            supabase_url=supabase_url,
+            supabase_key=supabase_key
+        ),
         ai_config=ai_config,
         redis_config=RedisConfig(redis_connection_string=redis_connection_string),
         mailing_config=MailingConfig(

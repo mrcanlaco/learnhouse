@@ -29,6 +29,7 @@ from src.security.auth import (
 from src.services.users.users import security_get_user
 from src.services.auth.utils import signWithGoogle, get_google_user_info
 from src.services.dev.dev import isDevModeEnabled
+from src.services.auth.supabase import verify_supabase_token, get_or_create_supabase_user
 from src.services.security.rate_limiting import (
     check_login_rate_limit,
     check_refresh_rate_limit,
@@ -467,6 +468,11 @@ async def login(
     return result
 
 
+class SupabaseExchangeRequest(BaseModel):
+    supabase_token: str
+    redirect_url: Optional[str] = None
+    org_id: Optional[int] = None
+
 class ThirdPartyLogin(BaseModel):
     email: EmailStr
     provider: Literal["google"]
@@ -737,6 +743,68 @@ async def api_verify_email(
 class ResendVerificationRequest(BaseModel):
     email: EmailStr
     org_id: Optional[int] = None
+
+
+@router.post(
+    "/exchange/supabase",
+    summary="Exchange Supabase token for LearnHouse session",
+    description="Validates a Supabase access token and automatically creates or logs in the user, returning LearnHouse session cookies."
+)
+async def exchange_supabase_token(
+    request: Request,
+    response: Response,
+    body: SupabaseExchangeRequest,
+    db_session: AsyncSession = Depends(get_db_session)
+):
+    config = get_learnhouse_config()
+    supabase_url = config.security_config.supabase_url
+    supabase_key = config.security_config.supabase_key
+
+    if not supabase_url or not supabase_key:
+        raise HTTPException(
+            status_code=500, 
+            detail="Supabase is not configured on this server."
+        )
+
+    # 1. Verify token with Supabase
+    supabase_user_data = await verify_supabase_token(
+        supabase_url=supabase_url,
+        supabase_key=supabase_key,
+        token=body.supabase_token
+    )
+
+    # 2. Map to LearnHouse Org (Default or specified)
+    org_id = body.org_id
+    if not org_id:
+        from src.db.users import get_default_org_id
+        org_id = await get_default_org_id(db_session)
+        if not org_id:
+            raise HTTPException(status_code=500, detail="No default organization found")
+
+    # 3. JIT Provisioning & Login
+    user = await get_or_create_supabase_user(
+        db_session=db_session,
+        user_data=supabase_user_data,
+        org_id=org_id
+    )
+
+    # 4. Mint LearnHouse Tokens
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=JWT_ACCESS_TOKEN_EXPIRES
+    )
+    refresh_token = create_refresh_token(data={"sub": user.email})
+    set_auth_cookies(response, access_token, refresh_token, request)
+
+    return {
+        "user": UserRead.model_validate(user),
+        "tokens": {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "expiry": get_token_expiry_ms()
+        },
+        "redirect_url": body.redirect_url
+    }
 
 
 @router.post(

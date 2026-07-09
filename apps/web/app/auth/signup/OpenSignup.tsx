@@ -123,7 +123,7 @@ function OpenSignUpComponent({ org: propOrg }: OpenSignUpComponentProps = {}) {
     return `${window.location.origin}/redirect_from_auth?next=${encodeURIComponent(dest)}`
   }
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     track(AnalyticsEvent.SignupGoogleClicked)
     // Store org context in cookies before OAuth redirect
     if (org?.slug) {
@@ -131,14 +131,18 @@ function OpenSignUpComponent({ org: propOrg }: OpenSignUpComponentProps = {}) {
       const isSecure = window.location.protocol === 'https:';
       const secureAttr = isSecure ? '; secure' : '';
       const baseAttributes = `; path=/; SameSite=Lax${secureAttr}`;
-      // Host-only on custom domains (a .{platformTopDomain} cookie can't be set
-      // from learn.acme.org → browser drops it → callback loses org context).
       const domainAttr = (topDomain === 'localhost' || isOnCustomDomain()) ? '' : `; domain=.${topDomain}`;
       document.cookie = `LH_oauth_orgslug=${org.slug}${baseAttributes}${domainAttr}`;
       document.cookie = `LH_oauth_org_id=${org.id}${baseAttributes}${domainAttr}`;
     }
-    // Use absolute URL with current origin for custom domain support
-    signIn('google', { callbackUrl: buildCallbackUrl() });
+
+    const { supabase } = await import('@lib/supabaseClient');
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback/supabase?redirect=${encodeURIComponent(buildCallbackUrl())}`
+      }
+    });
   };
 
   return (
