@@ -9,7 +9,7 @@ import { useAuth } from '@components/Contexts/AuthContext'
 function SupabaseCallbackInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { updateSession } = useAuth()
+  const { refreshSession } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -44,7 +44,7 @@ function SupabaseCallbackInner() {
         }
 
         // 3. Cập nhật AuthContext và chuyển hướng
-        await updateSession()
+        await refreshSession()
         window.location.href = redirectUrl
 
       } catch (err) {
@@ -53,7 +53,7 @@ function SupabaseCallbackInner() {
     }
 
     handleCallback()
-  }, [searchParams, updateSession])
+  }, [searchParams, refreshSession])
 
   if (error) {
     return (
