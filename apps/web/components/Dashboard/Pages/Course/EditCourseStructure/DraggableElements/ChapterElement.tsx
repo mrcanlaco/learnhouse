@@ -232,7 +232,7 @@ function ChapterElement(props: ChapterElementProps) {
             snapshot.isDragging ? 'shadow-xl ring-2 ring-blue-500/20 rotate-1' : ''
           }`}
           key={props.chapter.chapter_uuid}
-          {...provided.draggableProps}
+          {...provided.draggableProps} style={provided.draggableProps.style as any}
           {...provided.dragHandleProps}
           ref={provided.innerRef}
         >
