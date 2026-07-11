@@ -20,13 +20,13 @@ import { useLHSession } from '@components/Contexts/LHSessionContext'
 import toast from 'react-hot-toast'
 import { useFormik } from 'formik'
 import * as Yup from 'yup'
-import {  UploadCloud, Image as ImageIcon } from 'lucide-react'
+import {  UploadCloud, Image as ImageIcon, Clipboard } from 'lucide-react'
 import UnsplashImagePicker from "@components/Dashboard/Pages/Course/EditCourseGeneral/UnsplashImagePicker"
 import AIImageButton from '@components/Objects/AI/AIImageButton'
 import FormTagInput from "@components/Objects/StyledElements/Form/TagInput"
 import { useTranslation } from "react-i18next"
 import { useLHAnalytics, AnalyticsEvent } from '@services/analytics'
-import UpgradeModal from '@components/Dashboard/Shared/PlanRestricted/UpgradeModal'
+import { useUpgradeModal } from '@components/Dashboard/Shared/PlanRestricted/UpgradeModalContext'
 
 const _validationSchema = Yup.object().shape({
   name: Yup.string()
@@ -49,8 +49,8 @@ function CreateCourseModal({ closeModal, orgslug }: any) {
   const [orgId, setOrgId] = React.useState(null) as any
   const [showUnsplashPicker, setShowUnsplashPicker] = React.useState(false)
   const [isUploading, setIsUploading] = React.useState(false)
-  // Shown when a free org hits its course limit — a contextual upgrade paywall.
-  const [showUpgradeModal, setShowUpgradeModal] = React.useState(false)
+  // A free org that hits its course limit gets the shared upgrade paywall.
+  const { handlePlanLimit } = useUpgradeModal()
 
   const validationSchema = Yup.object().shape({
     name: Yup.string()
@@ -137,13 +137,8 @@ function CreateCourseModal({ closeModal, orgslug }: any) {
           const detail = typeof res.data?.detail === 'string' ? res.data.detail : ''
           // A free org that has hit its course limit gets a contextual upgrade
           // paywall at the moment of value, instead of a dead-end error toast.
-          if (/Usage Limit has been reached/i.test(detail)) {
-            track(AnalyticsEvent.FeatureGateUpgradeShown, {
-              feature: 'courses',
-              surface: 'course_create',
-              required_plan: 'standard',
-            })
-            setShowUpgradeModal(true)
+          if (handlePlanLimit(res, { source: 'course_create', feature: 'courses', requiredPlan: 'standard' })) {
+            closeModal()
           } else {
             const errorMessage = detail
               ? detail
@@ -197,6 +192,34 @@ function CreateCourseModal({ closeModal, orgslug }: any) {
 
   const handleAIImageFile = async (file: File) => {
     formik.setFieldValue('thumbnail', file)
+  }
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const clipboardItems = await navigator.clipboard.read()
+      for (const clipboardItem of clipboardItems) {
+        const imageTypes = clipboardItem.types.filter(type => type.startsWith('image/'))
+        if (imageTypes.length > 0) {
+          const imageType = imageTypes[0]
+          const blob = await clipboardItem.getType(imageType)
+          // The API derives the stored extension from the filename, so it must
+          // match the blob's actual type (browsers may hand back jpeg/webp/gif).
+          const extensionByType: Record<string, string> = {
+            'image/jpeg': 'jpg',
+            'image/png': 'png',
+            'image/gif': 'gif',
+            'image/webp': 'webp',
+          }
+          const extension = extensionByType[imageType] ?? 'png'
+          const file = new File([blob], `clipboard_image.${extension}`, { type: imageType })
+          formik.setFieldValue('thumbnail', file)
+          return
+        }
+      }
+      toast.error(t('courses.no_image_in_clipboard', { defaultValue: 'No image found in clipboard' }))
+    } catch (_) {
+      toast.error(t('courses.clipboard_read_error', { defaultValue: 'Failed to read from clipboard' }))
+    }
   }
 
   return (
@@ -272,6 +295,14 @@ function CreateCourseModal({ closeModal, orgslug }: any) {
                 >
                   <ImageIcon size={16} className="mr-2" />
                   <span>{t('courses.choose_from_gallery')}</span>
+                </button>
+                <button
+                  type="button"
+                  className="font-bold antialiased items-center text-gray text-sm rounded-md px-4 mt-6 flex"
+                  onClick={handlePasteFromClipboard}
+                >
+                  <Clipboard size={16} className="mr-2" />
+                  <span>{t('courses.paste_from_clipboard')}</span>
                 </button>
                 <AIImageButton
                   onSelect={handleUnsplashSelect}
@@ -353,15 +384,6 @@ function CreateCourseModal({ closeModal, orgslug }: any) {
           onClose={() => setShowUnsplashPicker(false)}
         />
       )}
-
-      <UpgradeModal
-        open={showUpgradeModal}
-        source="course_limit"
-        onClose={() => {
-          setShowUpgradeModal(false)
-          closeModal()
-        }}
-      />
     </FormLayout>
   )
 }
